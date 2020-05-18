@@ -150,7 +150,9 @@ def predict_cases(model, list_of_lists, output_filenames, folds, save_npz, num_t
 
     pool = Pool(num_threads_nifti_save)
     results = []
-
+    print('========================Predict cases:==========')
+    list_of_lists = list_of_lists[0:10]
+    print('==============length of list=======', len(list_of_lists))
     cleaned_output_files = []
     for o in output_filenames:
         dr, f = os.path.split(o)
@@ -161,20 +163,21 @@ def predict_cases(model, list_of_lists, output_filenames, folds, save_npz, num_t
             f = f + ".nii.gz"
         cleaned_output_files.append(join(dr, f))
 
-    if not overwrite_existing:
-        print("number of cases:", len(list_of_lists))
-        not_done_idx = [i for i, j in enumerate(cleaned_output_files) if not isfile(j)]
+    # if not overwrite_existing:
+    #     print("number of cases:", len(list_of_lists))
+    #     not_done_idx = [i for i, j in enumerate(cleaned_output_files) if not isfile(j)]
 
-        cleaned_output_files = [cleaned_output_files[i] for i in not_done_idx]
-        list_of_lists = [list_of_lists[i] for i in not_done_idx]
-        if segs_from_prev_stage is not None:
-            segs_from_prev_stage = [segs_from_prev_stage[i] for i in not_done_idx]
+    #     cleaned_output_files = [cleaned_output_files[i] for i in not_done_idx]
+    #     list_of_lists = [list_of_lists[i] for i in not_done_idx]
+    #     if segs_from_prev_stage is not None:
+    #         segs_from_prev_stage = [segs_from_prev_stage[i] for i in not_done_idx]
 
-        print("number of cases that still need to be predicted:", len(cleaned_output_files))
+    #     print("number of cases that still need to be predicted:", len(cleaned_output_files))
 
     print("emptying cuda cache")
     torch.cuda.empty_cache()
 
+    print('==============length of list=======', len(list_of_lists))
     print("loading parameters for folds,", folds)
     trainer, params = load_model_and_checkpoint_files(model, folds, fp16=fp16, checkpoint_name=checkpoint_name)
 
@@ -183,6 +186,8 @@ def predict_cases(model, list_of_lists, output_filenames, folds, save_npz, num_t
                                              segs_from_prev_stage)
     print("starting prediction...")
     all_output_files = []
+    print('=====preprocessing===')
+    print(preprocessing)
     for preprocessed in preprocessing:
         output_filename, (d, dct) = preprocessed
         all_output_files.append(all_output_files)
@@ -310,6 +315,11 @@ def predict_cases_fast(model, list_of_lists, output_filenames, folds, num_thread
             data = np.load(d)
             os.remove(d)
             d = data
+
+        print('====================The precessed data has dimension:====')
+        print(d.shape)
+        print('=======================================================')
+
 
         # preallocate the output arrays
         # same dtype as the return value in predict_preprocessed_data_return_seg_and_softmax (saves time)
@@ -549,6 +559,7 @@ def predict_from_folder(model, input_folder, output_folder, folds, save_npz, num
     :param overwrite_existing: if not None then it will be overwritten with whatever is in there. None is default (no overwrite)
     :return:
     """
+
     maybe_mkdir_p(output_folder)
     shutil.copy(join(model, 'plans.pkl'), output_folder)
 

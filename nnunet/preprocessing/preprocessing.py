@@ -293,6 +293,10 @@ class GenericPreprocessor(object):
         return data, seg, properties
 
     def preprocess_test_case(self, data_files, target_spacing, seg_file=None, force_separate_z=None):
+        print('==============datafiles===========')
+        print(data_files[0])
+        print(len(data_files))
+        print('==================================')
         data, seg, properties = ImageCropper.crop_from_list_of_files(data_files, seg_file)
 
         data = data.transpose((0, *[i + 1 for i in self.transpose_forward]))
