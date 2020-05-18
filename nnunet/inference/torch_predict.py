@@ -1,5 +1,6 @@
 import nnunet
 from nnunet.training.model_restore import load_model_and_checkpoint_files
+from nnunet.preprocessing.cropping import get_case_identifier_from_npz, ImageCropper
 class TorchPredictor:
     def __init__(self, model_path):
         self.model = model_path
@@ -9,45 +10,44 @@ class TorchPredictor:
         trainer, params = load_model_and_checkpoint_files(self.model, folds, fp16=False, checkpoint_name="model_final_checkpoint")
         return trainer, params
 
-    def predict(self, data):
+    def predict(self, data_path):
+        """
+        First suppose input data is just a path pointing to the data (3D)
+        """
+        # load plans and params
         trainer, params = self.load_model()
+        plans = trainer.plans
+        if plans.get('transpose_forward') is None or plans.get('transpose_backward') is None:
+            print("WARNING! You seem to have data that was preprocessed with a previous version of nnU-Net. "
+                  "You should rerun preprocessing. We will proceed and assume that both transpose_foward "
+                  "and transpose_backward are [0, 1, 2]. If that is not correct then weird things will happen!")
+            plans['transpose_forward'] = [0, 1, 2]
+            plans['transpose_backward'] = [0, 1, 2]
+
+        # 1. From preprocessing.GenericPreprocessor.preprocess_test_case
+        preprocessor = GenericPreprocessor(plans['normalization_schemes'],
+                                           plans['use_mask_for_norm'],
+                                           plans['transpose_forward'],
+                                           plans['dataset_properties']['intensityproperties'])
+        data, seg, properties = ImageCropper.crop_from_list_of_files(data_path)
+        data = data.transpose((0, *[i + 1 for i in preprocessor.transpose_forward]))
+        seg = seg.transpose((0, *[i + 1 for i in preprocessor.transpose_forward]))
+
+        data, seg, properties = preprocessor.resample_and_normalize(data, plans['plans_per_stage'][self.stage]['current_spacing'], properties, seg,
+                                                            force_separate_z=None)
+
+        output_data = data.astype(np.float32)
+
+        # 2. From predict.predict_cases
+
         softmax = []
         for p in params:
             trainer.load_checkpoint_ram(p, False)
             softmax.append(trainer.predict_preprocessed_data_return_seg_and_softmax(
-                data))
+                output_data))
 
         softmax = np.vstack(softmax)
         return np.mean(softmax, 0)
-
-    def preprocess_patient(self, input_files):
-        """
-        Used to predict new unseen data. Not used for the preprocessing of the training/test data
-        :param input_files:
-        :return:
-        """
-        from nnunet.training.model_restore import recursive_find_python_class
-        preprocessor_name = self.plans.get('preprocessor_name')
-        if preprocessor_name is None:
-            if self.threeD:
-                preprocessor_name = "GenericPreprocessor"
-            else:
-                preprocessor_name = "PreprocessorFor2D"
-
-        print("using preprocessor", preprocessor_name)
-        preprocessor_class = recursive_find_python_class([join(nnunet.__path__[0], "preprocessing")],
-                                                         preprocessor_name,
-                                                         current_module="nnunet.preprocessing")
-        assert preprocessor_class is not None, "Could not find preprocessor %s in nnunet.preprocessing" % \
-                                               preprocessor_name
-        preprocessor = preprocessor_class(self.normalization_schemes, self.use_mask_for_norm,
-                                           self.transpose_forward, self.intensity_properties)
-
-        d, s, properties = preprocessor.preprocess_test_case(input_files,
-                                                             self.plans['plans_per_stage'][self.stage][
-                                                                 'current_spacing'])
-        return d, s, properties
-
 
 def main():
     print('hello, this is my predictor receiving pytorch tensors')
